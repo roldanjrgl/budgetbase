@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   balance: Number
 });
 
+// Hash password before saving it into database.
 userSchema.pre('save', function(next) {
   const user = this;
 
@@ -24,6 +25,15 @@ userSchema.pre('save', function(next) {
     });
   });
 });
+
+// Method to validate password.
+userSchema.methods.comparePassword = function(candidatePassword, callback) {
+  bcrypt.compare(candidatePassword, this.password, function(err, isMatch) {
+    if (err) { return callback(err); }
+
+    callback(null, isMatch);
+  });
+}
 
 const User = mongoose.model('User', userSchema);
 
