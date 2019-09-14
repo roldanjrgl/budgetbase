@@ -1,12 +1,16 @@
 // -----------------------------------------------------------------------------------------
 // External Dependencies
 // -----------------------------------------------------------------------------------------
-const express    = require('express');
-const app        = express();
-const bodyParser = require('body-parser');
-const mongoose   = require('mongoose');
-const jwt        = require('jwt-simple');
-const cors       = require('cors');
+const express       = require('express');
+const app           = express();
+const bodyParser    = require('body-parser');
+const mongoose      = require('mongoose');
+const jwt           = require('jwt-simple');
+const cors          = require('cors');
+const passport      = require('passport');
+const JwtStrategy   = require('passport-jwt').Strategy;
+const ExtractJwt    = require('passport-jwt').ExtractJwt;
+const LocalStrategy = require('passport-local');
 
 // -----------------------------------------------------------------------------------------
 // Internal Dependencies
@@ -20,6 +24,9 @@ const keys = require('./config/keys');
 // -----------------------------------------------------------------------------------------
 app.use(bodyParser.json({ type: '*/*' }));
 app.use(cors());
+
+const requireAuth   = passport.authenticate('jwt', { session: false});
+const requireSignin = passport.authenticate('local', { session: false });
 
 // -----------------------------------------------------------------------------------------
 // MongoDB Setup
@@ -65,14 +72,54 @@ app.post('/api/signup', (req, res, next) => {
   });
 });
 
+app.post('/api/signin', requireSignin, (req, res, next) => {
+  res.send({ token: tokenForUser(req.user) });
+});
+
 // -----------------------------------------------------------------------------------------
-// Helper Methods
+// JWT Strategy
 // -----------------------------------------------------------------------------------------
 function tokenForUser(user) {
   const timestamp = new Date().getTime();
 
   return jwt.encode({ sub: user.id, iat: timestamp }, keys.jwtSecret);
 }
+
+const jwtOptions = {
+  jwtFromRequest: ExtractJwt.fromHeader('authorization'),
+  secretOrKey: keys.jwtSecret   
+};
+
+const jwtLogin = new JwtStrategy(jwtOptions, (payload, done) => {
+  User.findById(payload.sub, (err, user) => {
+    if (err) return done(err, false);
+
+    if (user) done(null, user);
+    else      done(null, false);
+  });
+});
+
+passport.use(jwtLogin);
+
+// -----------------------------------------------------------------------------------------
+// Local Strategy
+// -----------------------------------------------------------------------------------------
+const localOptions = { usernameField: 'email' };
+
+const localLogin = new LocalStrategy(localOptions, (email, password, done) => {
+  User.findOne({ email: email }, (err, user) => {
+    if (err)   return done(err);
+    if (!user) return done(null, false);
+
+    user.comparePassword(password, (err, isMatch) => {
+      if (err)      return done(err);
+      if (!isMatch) return done(null, false);
+      return done(null, user);
+    });
+  });
+});
+
+passport.use(localLogin);
 
 // -----------------------------------------------------------------------------------------
 // Port Setup
